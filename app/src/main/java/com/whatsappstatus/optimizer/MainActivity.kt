@@ -67,6 +67,56 @@ class MainActivity : AppCompatActivity() {
 
         // Si fue abierta desde el menú "Compartir" de Android
         handleIntent(intent)
+
+        // Comprobar si hay actualizaciones en GitHub Releases
+        checkForUpdates()
+    }
+
+    private fun checkForUpdates() {
+        Thread {
+            try {
+                val url = java.net.URL("https://api.github.com/repos/AdrianP2001/status-hd-whatsapp/releases/latest")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.setRequestProperty("User-Agent", "StatusHD-App")
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                if (conn.responseCode == 200) {
+                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(responseText)
+                    val latestTag = json.optString("tag_name", "v1.0")
+                    val currentVersion = "v1.0"
+
+                    if (latestTag.isNotEmpty() && latestTag != currentVersion) {
+                        val assets = json.optJSONArray("assets")
+                        var downloadUrl = ""
+                        if (assets != null) {
+                            for (i in 0 until assets.length()) {
+                                val asset = assets.getJSONObject(i)
+                                if (asset.optString("name").endsWith(".apk")) {
+                                    downloadUrl = asset.optString("browser_download_url")
+                                    break
+                                }
+                            }
+                        }
+                        if (downloadUrl.isEmpty()) {
+                            downloadUrl = json.optString("html_url")
+                        }
+
+                        runOnUiThread {
+                            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                                .setTitle("🚀 Actualización disponible: $latestTag")
+                                .setMessage("Hay una nueva versión de Status HD disponible. ¿Deseas descargarla ahora?\\n(Se actualizará sin perder tus datos).")
+                                .setPositiveButton("Actualizar") { _, _ ->
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                                    startActivity(browserIntent)
+                                }
+                                .setNegativeButton("Más tarde", null)
+                                .show()
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
     }
 
     override fun onNewIntent(intent: Intent?) {
