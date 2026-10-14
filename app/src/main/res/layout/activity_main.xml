@@ -53,7 +53,7 @@
                         android:background="#1E293B"
                         android:paddingHorizontal="6dp"
                         android:paddingVertical="2dp"
-                        android:text="v1.2"
+                        android:text="v1.3"
                         android:textColor="@color/text_gray"
                         android:textSize="11sp" />
                 </LinearLayout>

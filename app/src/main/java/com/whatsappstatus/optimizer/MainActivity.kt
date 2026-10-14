@@ -109,8 +109,8 @@ class MainActivity : AppCompatActivity() {
                 if (conn.responseCode == 200) {
                     val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                     val json = org.json.JSONObject(responseText)
-                    val latestTag = json.optString("tag_name", "v1.2")
-                    val currentVersion = "v1.2"
+                    val latestTag = json.optString("tag_name", "v1.3")
+                    val currentVersion = "v1.3"
 
                     if (latestTag.isNotEmpty() && latestTag != currentVersion) {
                         val assets = json.optJSONArray("assets")
