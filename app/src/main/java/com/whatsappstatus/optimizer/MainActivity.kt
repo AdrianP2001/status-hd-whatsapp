@@ -1,6 +1,14 @@
 package com.whatsappstatus.optimizer
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
@@ -15,7 +23,6 @@ import androidx.core.content.FileProvider
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.card.MaterialCardView
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.ceil
@@ -27,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvVideoTitle: TextView
     private lateinit var tvVideoDetails: TextView
     private lateinit var tvOptimizationBadge: TextView
+    private lateinit var btnSelectPhoto: Button
     private lateinit var btnSelectVideo: Button
     private lateinit var btnCompress: Button
     private lateinit var layoutProgress: View
@@ -34,13 +42,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var layoutResults: View
     private lateinit var resultsContainer: LinearLayout
 
-    private var selectedVideoUri: Uri? = null
+    private var selectedMediaUri: Uri? = null
+    private var isImage: Boolean = false
     private var videoDurationSec: Double = 0.0
 
     private val selectVideoLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { onVideoSelected(it) }
+        uri?.let { onMediaSelected(it, isPhoto = false) }
+    }
+
+    private val selectPhotoLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { onMediaSelected(it, isPhoto = true) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         tvVideoTitle = findViewById(R.id.tvVideoTitle)
         tvVideoDetails = findViewById(R.id.tvVideoDetails)
         tvOptimizationBadge = findViewById(R.id.tvOptimizationBadge)
+        btnSelectPhoto = findViewById(R.id.btnSelectPhoto)
         btnSelectVideo = findViewById(R.id.btnSelectVideo)
         btnCompress = findViewById(R.id.btnCompress)
         layoutProgress = findViewById(R.id.layoutProgress)
@@ -57,12 +73,22 @@ class MainActivity : AppCompatActivity() {
         layoutResults = findViewById(R.id.layoutResults)
         resultsContainer = findViewById(R.id.resultsContainer)
 
+        btnSelectPhoto.setOnClickListener {
+            selectPhotoLauncher.launch("image/*")
+        }
+
         btnSelectVideo.setOnClickListener {
             selectVideoLauncher.launch("video/*")
         }
 
         btnCompress.setOnClickListener {
-            selectedVideoUri?.let { uri -> startCompression(uri) }
+            selectedMediaUri?.let { uri ->
+                if (isImage) {
+                    startPhotoOptimization(uri)
+                } else {
+                    startVideoCompression(uri)
+                }
+            }
         }
 
         // Si fue abierta desde el menú "Compartir" de Android
@@ -83,8 +109,8 @@ class MainActivity : AppCompatActivity() {
                 if (conn.responseCode == 200) {
                     val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                     val json = org.json.JSONObject(responseText)
-                    val latestTag = json.optString("tag_name", "v1.0")
-                    val currentVersion = "v1.0"
+                    val latestTag = json.optString("tag_name", "v1.2")
+                    val currentVersion = "v1.2"
 
                     if (latestTag.isNotEmpty() && latestTag != currentVersion) {
                         val assets = json.optJSONArray("assets")
@@ -105,7 +131,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
                                 .setTitle("🚀 Actualización disponible: $latestTag")
-                                .setMessage("Hay una nueva versión de Status HD disponible. ¿Deseas descargarla ahora?\\n(Se actualizará sin perder tus datos).")
+                                .setMessage("Hay una nueva versión de Status HD disponible. ¿Deseas descargarla ahora?\n(Se actualizará sin perder tus datos).")
                                 .setPositiveButton("Actualizar") { _, _ ->
                                     val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
                                     startActivity(browserIntent)
@@ -125,17 +151,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
-        if (Intent.ACTION_SEND == intent.action && intent.type?.startsWith("video/") == true) {
-            val videoUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-            videoUri?.let { onVideoSelected(it) }
+        if (Intent.ACTION_SEND == intent.action) {
+            val type = intent.type ?: ""
+            val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) ?: intent.data
+            uri?.let {
+                val isPhoto = type.startsWith("image/")
+                onMediaSelected(it, isPhoto = isPhoto)
+            }
         }
     }
 
-    private fun onVideoSelected(uri: Uri) {
-        selectedVideoUri = uri
+    private fun onMediaSelected(uri: Uri, isPhoto: Boolean) {
+        selectedMediaUri = uri
+        isImage = isPhoto
         layoutResults.visibility = View.GONE
         resultsContainer.removeAllViews()
 
+        if (isPhoto) {
+            handlePhotoSelected(uri)
+        } else {
+            handleVideoSelected(uri)
+        }
+    }
+
+    private fun handlePhotoSelected(uri: Uri) {
+        try {
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            }
+            val w = options.outWidth
+            val h = options.outHeight
+
+            tvVideoTitle.text = "Foto cargada ($w x $h)"
+            tvVideoDetails.text = "Formato 9:16 vertical • Ajuste proporcional sin deformar"
+            tvOptimizationBadge.text = "Modo: Foto HD (Máxima Nitidez JPEG 96%)"
+            btnCompress.text = "Optimizar Foto para WhatsApp"
+            btnCompress.isEnabled = true
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error al leer imagen: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleVideoSelected(uri: Uri) {
         try {
             val retriever = MediaMetadataRetriever()
             retriever.setDataSource(this, uri)
@@ -158,14 +216,125 @@ class MainActivity : AppCompatActivity() {
                 tvOptimizationBadge.text = "Modo: 720p Optimizado 60s (Tope ~14.5MB)"
             }
 
+            btnCompress.text = "Optimizar Video para WhatsApp"
             btnCompress.isEnabled = true
         } catch (e: Exception) {
-            Toast.makeText(this, "Error al leer metadatos: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Error al leer metadatos de video: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun startCompression(uri: Uri) {
+    private fun startPhotoOptimization(uri: Uri) {
         btnCompress.isEnabled = false
+        btnSelectPhoto.isEnabled = false
+        btnSelectVideo.isEnabled = false
+        layoutProgress.visibility = View.VISIBLE
+        layoutResults.visibility = View.GONE
+        resultsContainer.removeAllViews()
+
+        tvProgressStatus.text = "Optimizando foto en alta definición (9:16)..."
+
+        Thread {
+            try {
+                // 1. Leer rotación EXIF
+                var rotation = 0
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    val exif = ExifInterface(stream)
+                    rotation = when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                        ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                        ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                        ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                        else -> 0
+                    }
+                }
+
+                // 2. Decodificar la imagen asegurando que no exceda memoria
+                val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, boundsOptions)
+                }
+
+                var inSample = 1
+                while (boundsOptions.outWidth / inSample > 3840 || boundsOptions.outHeight / inSample > 3840) {
+                    inSample *= 2
+                }
+
+                val decodeOptions = BitmapFactory.Options().apply { inSampleSize = inSample }
+                var rawBmp = contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream, null, decodeOptions)
+                } ?: throw IllegalStateException("No se pudo cargar la imagen")
+
+                // Rotar si es necesario
+                if (rotation != 0) {
+                    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                    val rotatedBmp = Bitmap.createBitmap(rawBmp, 0, 0, rawBmp.width, rawBmp.height, matrix, true)
+                    rawBmp.recycle()
+                    rawBmp = rotatedBmp
+                }
+
+                // 3. Crear lienzo vertical 9:16 (1080 x 1920)
+                val targetW = 1080
+                val targetH = 1920
+                val canvasBmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(canvasBmp)
+                canvas.drawColor(Color.BLACK)
+
+                val scale = min(targetW.toFloat() / rawBmp.width, targetH.toFloat() / rawBmp.height)
+                val scaledW = (rawBmp.width * scale).toInt()
+                val scaledH = (rawBmp.height * scale).toInt()
+                val left = (targetW - scaledW) / 2f
+                val top = (targetH - scaledH) / 2f
+
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+                canvas.drawBitmap(rawBmp, null, RectF(left, top, left + scaledW, top + scaledH), paint)
+
+                // 4. Guardar como JPEG de alta fidelidad (96%)
+                val outFile = File(cacheDir, "estado_foto_${System.currentTimeMillis()}.jpg")
+                FileOutputStream(outFile).use { out ->
+                    canvasBmp.compress(Bitmap.CompressFormat.JPEG, 96, out)
+                }
+
+                rawBmp.recycle()
+                canvasBmp.recycle()
+
+                runOnUiThread {
+                    layoutProgress.visibility = View.GONE
+                    btnCompress.isEnabled = true
+                    btnSelectPhoto.isEnabled = true
+                    btnSelectVideo.isEnabled = true
+
+                    val sizeMb = outFile.length() / (1024.0 * 1024.0)
+                    layoutResults.visibility = View.VISIBLE
+                    resultsContainer.removeAllViews()
+
+                    val btn = MaterialButton(this@MainActivity).apply {
+                        text = "📤 Foto HD (${String.format("%.2f", sizeMb)} MB) ➔ Publicar en WhatsApp"
+                        setBackgroundColor(getColor(R.color.whatsapp_green))
+                        setTextColor(getColor(android.R.color.black))
+                        cornerRadius = 24
+                        setOnClickListener {
+                            sharePhotoToWhatsApp(outFile)
+                        }
+                    }
+                    resultsContainer.addView(btn)
+
+                    // Abrir directamente WhatsApp
+                    sharePhotoToWhatsApp(outFile)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    layoutProgress.visibility = View.GONE
+                    btnCompress.isEnabled = true
+                    btnSelectPhoto.isEnabled = true
+                    btnSelectVideo.isEnabled = true
+                    Toast.makeText(this@MainActivity, "Error al optimizar foto: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun startVideoCompression(uri: Uri) {
+        btnCompress.isEnabled = false
+        btnSelectPhoto.isEnabled = false
         btnSelectVideo.isEnabled = false
         layoutProgress.visibility = View.VISIBLE
         layoutResults.visibility = View.GONE
@@ -173,8 +342,7 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
-                // Copiar el video a la cache temporal local para que FFmpeg pueda acceder al archivo físico
-                tvProgressStatus.post { tvProgressStatus.text = "Preparando archivo..." }
+                tvProgressStatus.post { tvProgressStatus.text = "Preparando archivo de video..." }
                 val tempInput = File(cacheDir, "input_temp_${System.currentTimeMillis()}.mp4")
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempInput).use { output ->
@@ -239,15 +407,15 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     layoutProgress.visibility = View.GONE
                     btnCompress.isEnabled = true
+                    btnSelectPhoto.isEnabled = true
                     btnSelectVideo.isEnabled = true
 
                     if (generatedFiles.isNotEmpty()) {
                         layoutResults.visibility = View.VISIBLE
                         showGeneratedFiles(generatedFiles)
 
-                        // Si solo se generó 1 parte, abre directamente WhatsApp
                         if (generatedFiles.size == 1) {
-                            shareToWhatsApp(generatedFiles[0])
+                            shareVideoToWhatsApp(generatedFiles[0])
                         }
                     } else {
                         Toast.makeText(this@MainActivity, "Error al procesar el video", Toast.LENGTH_LONG).show()
@@ -257,6 +425,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     layoutProgress.visibility = View.GONE
                     btnCompress.isEnabled = true
+                    btnSelectPhoto.isEnabled = true
                     btnSelectVideo.isEnabled = true
                     Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -274,14 +443,14 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(getColor(android.R.color.black))
                 cornerRadius = 24
                 setOnClickListener {
-                    shareToWhatsApp(file)
+                    shareVideoToWhatsApp(file)
                 }
             }
             resultsContainer.addView(btn)
         }
     }
 
-    private fun shareToWhatsApp(file: File) {
+    private fun shareVideoToWhatsApp(file: File) {
         val uri = FileProvider.getUriForFile(
             this,
             "${applicationContext.packageName}.fileprovider",
@@ -298,8 +467,29 @@ class MainActivity : AppCompatActivity() {
         try {
             startActivity(shareIntent)
         } catch (e: Exception) {
-            // Si WhatsApp no está instalado o no acepta el paquete directo, abre el selector universal
             val chooser = Intent.createChooser(shareIntent, "Compartir video optimizado")
+            startActivity(chooser)
+        }
+    }
+
+    private fun sharePhotoToWhatsApp(file: File) {
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            file
+        )
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            setPackage("com.whatsapp")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            startActivity(shareIntent)
+        } catch (e: Exception) {
+            val chooser = Intent.createChooser(shareIntent, "Compartir foto optimizada")
             startActivity(chooser)
         }
     }

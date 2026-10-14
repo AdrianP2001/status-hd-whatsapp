@@ -53,7 +53,7 @@
                         android:background="#1E293B"
                         android:paddingHorizontal="6dp"
                         android:paddingVertical="2dp"
-                        android:text="v1.0"
+                        android:text="v1.2"
                         android:textColor="@color/text_gray"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -89,7 +89,7 @@
                     android:id="@+id/tvVideoTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Ningún video seleccionado"
+                    android:text="Ningún archivo seleccionado"
                     android:textColor="@color/text_white"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -99,7 +99,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:text="Comparte un video desde tu Galería o pulsa Seleccionar"
+                    android:text="Comparte una foto o video desde tu Galería o pulsa Seleccionar"
                     android:textColor="@color/text_gray"
                     android:textSize="13sp" />
 
@@ -111,7 +111,7 @@
                     android:background="#15803D"
                     android:paddingHorizontal="10dp"
                     android:paddingVertical="4dp"
-                    android:text="Modo Auto: 1080p (&lt;=35s) / 720p (&lt;=60s)"
+                    android:text="Modo Auto: Fotos HD (9:16) • Videos 1080p/720p"
                     android:textColor="#DCFCE7"
                     android:textSize="12sp"
                     android:textStyle="bold" />
@@ -119,16 +119,35 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Boton Seleccionar Video -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSelectVideo"
+        <!-- Botones Seleccionar Foto y Video -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:layout_marginTop="16dp"
-            android:text="Seleccionar Video de Galería"
-            android:textColor="@color/text_white"
-            app:backgroundTint="#334155"
-            app:cornerRadius="12dp" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectPhoto"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="📷 Foto"
+                android:textColor="@color/text_white"
+                app:backgroundTint="#334155"
+                app:cornerRadius="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectVideo"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="🎬 Video"
+                android:textColor="@color/text_white"
+                app:backgroundTint="#334155"
+                app:cornerRadius="12dp" />
+        </LinearLayout>
 
         <!-- Boton Comprimir y Compartir -->
         <com.google.android.material.button.MaterialButton
