@@ -19,11 +19,11 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <com.google.android.material.imageview.ShapeableImageView
-                android:layout_width="54dp"
-                android:layout_height="54dp"
+            <ImageView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:src="@drawable/app_icon"
-                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium" />
+                android:contentDescription="Logo" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -53,7 +53,7 @@
                         android:background="#1E293B"
                         android:paddingHorizontal="6dp"
                         android:paddingVertical="2dp"
-                        android:text="v1.3"
+                        android:text="v1.4"
                         android:textColor="@color/text_gray"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -62,13 +62,13 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Optimizador inteligente para Estados de WhatsApp"
+                    android:text="Optimizador inteligente de fotos y videos para WhatsApp"
                     android:textColor="@color/text_gray"
                     android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Tarjeta de Video Seleccionado -->
+        <!-- Tarjeta de Archivo Seleccionado -->
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardVideoInfo"
             android:layout_width="match_parent"
@@ -162,7 +162,7 @@
             app:backgroundTint="@color/whatsapp_green"
             app:cornerRadius="12dp" />
 
-        <!-- Seccion de Progreso -->
+        <!-- Seccion de Progreso Real -->
         <LinearLayout
             android:id="@+id/layoutProgress"
             android:layout_width="match_parent"
@@ -171,26 +171,46 @@
             android:orientation="vertical"
             android:visibility="gone">
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:id="@+id/tvProgressStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Codificando..."
+                    android:textColor="@color/text_white"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvProgressPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0%"
+                    android:textColor="@color/whatsapp_green"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
             <ProgressBar
                 android:id="@+id/progressBar"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:indeterminate="true"
-                android:progressTint="@color/whatsapp_green" />
-
-            <TextView
-                android:id="@+id/tvProgressStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:layout_marginTop="8dp"
-                android:text="Codificando video..."
-                android:textColor="@color/text_gray"
-                android:textSize="13sp" />
+                android:layout_height="10dp"
+                android:indeterminate="false"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="@color/whatsapp_green"
+                android:progressBackgroundTint="#334155" />
         </LinearLayout>
 
-        <!-- Resultados generados -->
+        <!-- Resultados generados con selección de partes -->
         <LinearLayout
             android:id="@+id/layoutResults"
             android:layout_width="match_parent"
@@ -199,20 +219,52 @@
             android:orientation="vertical"
             android:visibility="gone">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Partes Listas para Publicar:"
-                android:textColor="@color/whatsapp_green"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="10dp">
+
+                <TextView
+                    android:id="@+id/tvResultsHeader"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Partes listas para enviar:"
+                    android:textColor="@color/whatsapp_green"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvSelectAllToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Desmarcar todas"
+                    android:textColor="@color/accent_blue"
+                    android:textSize="12sp"
+                    android:padding="6dp"
+                    android:clickable="true"
+                    android:focusable="true" />
+            </LinearLayout>
 
             <LinearLayout
                 android:id="@+id/resultsContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
                 android:orientation="vertical" />
+
+            <!-- Botón principal para enviar las partes seleccionadas -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnShareSelected"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="14dp"
+                android:text="📤 Enviar a WhatsApp"
+                android:textColor="#000000"
+                android:textStyle="bold"
+                app:backgroundTint="@color/whatsapp_green"
+                app:cornerRadius="12dp" />
         </LinearLayout>
 
     </LinearLayout>
