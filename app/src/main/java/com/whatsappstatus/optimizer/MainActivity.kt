@@ -8,9 +8,11 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -550,7 +552,7 @@ class MainActivity : AppCompatActivity() {
                 text = "Parte ${seg.partNumber}: ${formatSeconds(seg.startSec)} a ${formatSeconds(seg.startSec + seg.durationSec)} (${String.format(Locale.US, "%.1fs", seg.durationSec)})"
                 setTextColor(Color.WHITE)
                 textSize = 13f
-                textStyle = android.graphics.Typeface.BOLD
+                setTypeface(null, Typeface.BOLD)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
             }
 
@@ -564,7 +566,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(Color.parseColor("#EF4444"))
                 }
                 textSize = 11f
-                textStyle = android.graphics.Typeface.BOLD
+                setTypeface(null, Typeface.BOLD)
             }
 
             topRow.addView(tvTitle)
