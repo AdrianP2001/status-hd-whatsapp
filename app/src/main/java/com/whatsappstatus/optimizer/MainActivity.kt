@@ -11,15 +11,19 @@ import android.graphics.RectF
 import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
@@ -27,12 +31,26 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegKitConfig
 import com.arthenica.ffmpegkit.ReturnCode
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.card.MaterialCardView
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+
+data class VideoSegment(
+    val partNumber: Int,
+    val startSec: Double,
+    val durationSec: Double
+)
+
+enum class SplitMode {
+    BALANCED,
+    FIXED,
+    MANUAL
+}
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,9 +70,50 @@ class MainActivity : AppCompatActivity() {
     private lateinit var resultsContainer: LinearLayout
     private lateinit var btnShareSelected: MaterialButton
 
+    // Vistas de Opciones de División (v1.5)
+    private lateinit var cardSplitOptions: View
+    private lateinit var toggleGroupLimit: MaterialButtonToggleGroup
+    private lateinit var btnLimit30s: MaterialButton
+    private lateinit var btnLimit60s: MaterialButton
+    private lateinit var toggleGroupSplitMode: MaterialButtonToggleGroup
+    private lateinit var btnModeBalanced: MaterialButton
+    private lateinit var btnModeFixed: MaterialButton
+    private lateinit var btnModeManual: MaterialButton
+    private lateinit var tvAutoSplitSummary: TextView
+    private lateinit var layoutManualEditor: View
+    private lateinit var videoPreview: VideoView
+    private lateinit var ivPlayPauseOverlay: ImageView
+    private lateinit var tvCurrentVideoTime: TextView
+    private lateinit var seekBarVideo: SeekBar
+    private lateinit var tvTotalVideoTime: TextView
+    private lateinit var btnMarkCutPoint: MaterialButton
+    private lateinit var containerManualCuts: LinearLayout
+
     private var selectedMediaUri: Uri? = null
     private var isImage: Boolean = false
     private var videoDurationSec: Double = 0.0
+
+    // Configuración de división
+    private var selectedLimitSec: Double = 30.0
+    private var currentSplitMode: SplitMode = SplitMode.BALANCED
+    private val manualCutPoints = mutableListOf<Double>()
+
+    // Handler para progreso del video preview
+    private val videoHandler = Handler(Looper.getMainLooper())
+    private val updateVideoProgressRunnable = object : Runnable {
+        override fun run() {
+            try {
+                if (videoPreview.isPlaying) {
+                    val currentPos = videoPreview.currentPosition
+                    seekBarVideo.progress = currentPos
+                    val currentSec = currentPos / 1000.0
+                    tvCurrentVideoTime.text = formatSeconds(currentSec)
+                    btnMarkCutPoint.text = "✂️ Marcar corte en ${formatSeconds(currentSec)}"
+                }
+            } catch (_: Exception) {}
+            videoHandler.postDelayed(this, 250)
+        }
+    }
 
     // Gestión de partes generadas
     private val generatedFilesList = mutableListOf<File>()
@@ -92,6 +151,49 @@ class MainActivity : AppCompatActivity() {
         tvSelectAllToggle = findViewById(R.id.tvSelectAllToggle)
         resultsContainer = findViewById(R.id.resultsContainer)
         btnShareSelected = findViewById(R.id.btnShareSelected)
+
+        // Inicializar vistas de división (v1.5)
+        cardSplitOptions = findViewById(R.id.cardSplitOptions)
+        toggleGroupLimit = findViewById(R.id.toggleGroupLimit)
+        btnLimit30s = findViewById(R.id.btnLimit30s)
+        btnLimit60s = findViewById(R.id.btnLimit60s)
+        toggleGroupSplitMode = findViewById(R.id.toggleGroupSplitMode)
+        btnModeBalanced = findViewById(R.id.btnModeBalanced)
+        btnModeFixed = findViewById(R.id.btnModeFixed)
+        btnModeManual = findViewById(R.id.btnModeManual)
+        tvAutoSplitSummary = findViewById(R.id.tvAutoSplitSummary)
+        layoutManualEditor = findViewById(R.id.layoutManualEditor)
+        videoPreview = findViewById(R.id.videoPreview)
+        ivPlayPauseOverlay = findViewById(R.id.ivPlayPauseOverlay)
+        tvCurrentVideoTime = findViewById(R.id.tvCurrentVideoTime)
+        seekBarVideo = findViewById(R.id.seekBarVideo)
+        tvTotalVideoTime = findViewById(R.id.tvTotalVideoTime)
+        btnMarkCutPoint = findViewById(R.id.btnMarkCutPoint)
+        containerManualCuts = findViewById(R.id.containerManualCuts)
+
+        // Estado inicial de toggles
+        toggleGroupLimit.check(R.id.btnLimit30s)
+        toggleGroupSplitMode.check(R.id.btnModeBalanced)
+
+        toggleGroupLimit.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                selectedLimitSec = if (checkedId == R.id.btnLimit60s) 60.0 else 30.0
+                updateSplitUi()
+            }
+        }
+
+        toggleGroupSplitMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                currentSplitMode = when (checkedId) {
+                    R.id.btnModeManual -> SplitMode.MANUAL
+                    R.id.btnModeFixed -> SplitMode.FIXED
+                    else -> SplitMode.BALANCED
+                }
+                updateSplitUi()
+            }
+        }
+
+        setupVideoPreviewControls()
 
         btnSelectPhoto.setOnClickListener {
             selectPhotoLauncher.launch("image/*")
@@ -160,8 +262,8 @@ class MainActivity : AppCompatActivity() {
                 if (conn.responseCode == 200) {
                     val responseText = conn.inputStream.bufferedReader().use { it.readText() }
                     val json = org.json.JSONObject(responseText)
-                    val latestTag = json.optString("tag_name", "v1.4")
-                    val currentVersion = "v1.4"
+                    val latestTag = json.optString("tag_name", "v1.5")
+                    val currentVersion = "v1.5"
 
                     if (latestTag.isNotEmpty() && latestTag != currentVersion) {
                         val assets = json.optJSONArray("assets")
@@ -228,6 +330,330 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun formatSeconds(sec: Double): String {
+        val totalSec = sec.toInt()
+        val m = totalSec / 60
+        val s = totalSec % 60
+        return String.format(Locale.US, "%02d:%02d", m, s)
+    }
+
+    private fun setupVideoPreviewControls() {
+        videoPreview.setOnClickListener {
+            togglePlayPauseVideo()
+        }
+        ivPlayPauseOverlay.setOnClickListener {
+            togglePlayPauseVideo()
+        }
+
+        videoPreview.setOnCompletionListener {
+            ivPlayPauseOverlay.setImageResource(android.R.drawable.ic_media_play)
+            ivPlayPauseOverlay.visibility = View.VISIBLE
+        }
+
+        seekBarVideo.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    videoPreview.seekTo(progress)
+                    val currentSec = progress / 1000.0
+                    tvCurrentVideoTime.text = formatSeconds(currentSec)
+                    btnMarkCutPoint.text = "✂️ Marcar corte en ${formatSeconds(currentSec)}"
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        btnMarkCutPoint.setOnClickListener {
+            val currentSec = videoPreview.currentPosition / 1000.0
+            if (currentSec <= 1.0 || currentSec >= (videoDurationSec - 1.0)) {
+                Toast.makeText(this, "El corte debe estar al menos a 1s del inicio y del final", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val existsClose = manualCutPoints.any { kotlin.math.abs(it - currentSec) < 1.0 }
+            if (existsClose) {
+                Toast.makeText(this, "Ya existe un corte muy cerca de este segundo", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            manualCutPoints.add(currentSec)
+            manualCutPoints.sort()
+            renderManualCutsUi()
+            Toast.makeText(this, "Corte agregado en ${formatSeconds(currentSec)}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun togglePlayPauseVideo() {
+        if (videoPreview.isPlaying) {
+            videoPreview.pause()
+            ivPlayPauseOverlay.setImageResource(android.R.drawable.ic_media_play)
+            ivPlayPauseOverlay.visibility = View.VISIBLE
+        } else {
+            videoPreview.start()
+            ivPlayPauseOverlay.setImageResource(android.R.drawable.ic_media_pause)
+            ivPlayPauseOverlay.visibility = View.GONE
+            videoHandler.post(updateVideoProgressRunnable)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::videoPreview.isInitialized && videoPreview.isPlaying) {
+            videoPreview.pause()
+        }
+        videoHandler.removeCallbacks(updateVideoProgressRunnable)
+    }
+
+    private fun updateSplitUi() {
+        if (isImage || selectedMediaUri == null) {
+            cardSplitOptions.visibility = View.GONE
+            return
+        }
+
+        cardSplitOptions.visibility = View.VISIBLE
+        val segments = calculateSegments()
+
+        val is1080 = segments.all { it.durationSec <= 35.0 }
+        tvOptimizationBadge.text = if (is1080) {
+            "Modo: 1080p Máxima Nitidez (~14.5MB por estado)"
+        } else {
+            "Modo: 720p Optimizado (~14.5MB por estado)"
+        }
+
+        when (currentSplitMode) {
+            SplitMode.BALANCED -> {
+                tvAutoSplitSummary.visibility = View.VISIBLE
+                layoutManualEditor.visibility = View.GONE
+                if (::videoPreview.isInitialized && videoPreview.isPlaying) {
+                    videoPreview.pause()
+                }
+
+                if (segments.size == 1) {
+                    tvAutoSplitSummary.text = "1 sola parte completa (${String.format(Locale.US, "%.1fs", videoDurationSec)}) • No requiere corte"
+                } else {
+                    val partDur = segments[0].durationSec
+                    tvAutoSplitSummary.text = "⚖️ Dividir en ${segments.size} partes equilibradas de ${String.format(Locale.US, "%.1fs", partDur)} cada una (ideal para WhatsApp)"
+                }
+            }
+            SplitMode.FIXED -> {
+                tvAutoSplitSummary.visibility = View.VISIBLE
+                layoutManualEditor.visibility = View.GONE
+                if (::videoPreview.isInitialized && videoPreview.isPlaying) {
+                    videoPreview.pause()
+                }
+
+                if (segments.size == 1) {
+                    tvAutoSplitSummary.text = "1 sola parte completa (${String.format(Locale.US, "%.1fs", videoDurationSec)})"
+                } else {
+                    val partsDesc = segments.map { String.format(Locale.US, "%.1fs", it.durationSec) }.joinToString(" + ")
+                    tvAutoSplitSummary.text = "⏱️ Dividir en ${segments.size} partes fijas: $partsDesc"
+                }
+            }
+            SplitMode.MANUAL -> {
+                tvAutoSplitSummary.visibility = View.GONE
+                layoutManualEditor.visibility = View.VISIBLE
+
+                if (manualCutPoints.isEmpty() && videoDurationSec > selectedLimitSec) {
+                    val numParts = ceil(videoDurationSec / selectedLimitSec).toInt().coerceAtLeast(1)
+                    val partDur = videoDurationSec / numParts
+                    for (i in 1 until numParts) {
+                        manualCutPoints.add(i * partDur)
+                    }
+                    manualCutPoints.sort()
+                }
+
+                renderManualCutsUi()
+            }
+        }
+    }
+
+    private fun calculateSegments(): List<VideoSegment> {
+        if (videoDurationSec <= selectedLimitSec) {
+            return listOf(VideoSegment(1, 0.0, videoDurationSec))
+        }
+
+        return when (currentSplitMode) {
+            SplitMode.BALANCED -> {
+                val numParts = ceil(videoDurationSec / selectedLimitSec).toInt().coerceAtLeast(1)
+                val partDur = videoDurationSec / numParts
+                val list = mutableListOf<VideoSegment>()
+                for (i in 0 until numParts) {
+                    val start = i * partDur
+                    val dur = min(partDur, videoDurationSec - start)
+                    list.add(VideoSegment(i + 1, start, dur))
+                }
+                list
+            }
+            SplitMode.FIXED -> {
+                val numParts = ceil(videoDurationSec / selectedLimitSec).toInt().coerceAtLeast(1)
+                val list = mutableListOf<VideoSegment>()
+                for (i in 0 until numParts) {
+                    val start = i * selectedLimitSec
+                    val dur = min(selectedLimitSec, videoDurationSec - start)
+                    if (dur > 0.5) {
+                        list.add(VideoSegment(i + 1, start, dur))
+                    }
+                }
+                list
+            }
+            SplitMode.MANUAL -> {
+                val validPoints = manualCutPoints
+                    .filter { it in 1.0..(videoDurationSec - 1.0) }
+                    .sorted()
+                val allBoundaries = listOf(0.0) + validPoints + listOf(videoDurationSec)
+                val list = mutableListOf<VideoSegment>()
+                for (i in 0 until allBoundaries.size - 1) {
+                    val start = allBoundaries[i]
+                    val dur = allBoundaries[i + 1] - start
+                    if (dur > 0.5) {
+                        list.add(VideoSegment(i + 1, start, dur))
+                    }
+                }
+                if (list.isEmpty()) {
+                    listOf(VideoSegment(1, 0.0, videoDurationSec))
+                } else {
+                    list
+                }
+            }
+        }
+    }
+
+    private fun renderManualCutsUi() {
+        containerManualCuts.removeAllViews()
+        val segments = calculateSegments()
+
+        for ((idx, seg) in segments.withIndex()) {
+            val rowCard = MaterialCardView(this).apply {
+                radius = 16f
+                strokeColor = Color.parseColor("#334155")
+                strokeWidth = 2
+                setCardBackgroundColor(Color.parseColor("#0F172A"))
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, 10)
+                }
+                layoutParams = params
+            }
+
+            val rowLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(16, 14, 16, 14)
+            }
+
+            val topRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+
+            val tvTitle = TextView(this).apply {
+                text = "Parte ${seg.partNumber}: ${formatSeconds(seg.startSec)} a ${formatSeconds(seg.startSec + seg.durationSec)} (${String.format(Locale.US, "%.1fs", seg.durationSec)})"
+                setTextColor(Color.WHITE)
+                textSize = 13f
+                textStyle = android.graphics.Typeface.BOLD
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+            }
+
+            val isValid = seg.durationSec <= (selectedLimitSec + 0.5)
+            val tvBadge = TextView(this).apply {
+                if (isValid) {
+                    text = "✅ Válido"
+                    setTextColor(Color.parseColor("#22C55E"))
+                } else {
+                    text = "⚠️ >${selectedLimitSec.toInt()}s"
+                    setTextColor(Color.parseColor("#EF4444"))
+                }
+                textSize = 11f
+                textStyle = android.graphics.Typeface.BOLD
+            }
+
+            topRow.addView(tvTitle)
+            topRow.addView(tvBadge)
+            rowLayout.addView(topRow)
+
+            // Controles de ajuste si hay corte al final de este segmento
+            if (idx < manualCutPoints.size) {
+                val cutIdx = idx
+                val cutVal = manualCutPoints[cutIdx]
+
+                val controlsRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 8, 0, 0)
+                    }
+                }
+
+                val tvCutLabel = TextView(this).apply {
+                    text = "Corte en: ${formatSeconds(cutVal)}"
+                    setTextColor(Color.parseColor("#94A3B8"))
+                    textSize = 12f
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.0f)
+                }
+
+                val btnMinus = TextView(this).apply {
+                    text = " -1s "
+                    setTextColor(Color.parseColor("#38BDF8"))
+                    setBackgroundColor(Color.parseColor("#1E293B"))
+                    setPadding(16, 8, 16, 8)
+                    textSize = 12f
+                    setOnClickListener {
+                        val newVal = (manualCutPoints[cutIdx] - 1.0).coerceAtLeast(1.0)
+                        manualCutPoints[cutIdx] = newVal
+                        renderManualCutsUi()
+                    }
+                }
+
+                val spacer1 = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(12, 0)
+                }
+
+                val btnPlus = TextView(this).apply {
+                    text = " +1s "
+                    setTextColor(Color.parseColor("#38BDF8"))
+                    setBackgroundColor(Color.parseColor("#1E293B"))
+                    setPadding(16, 8, 16, 8)
+                    textSize = 12f
+                    setOnClickListener {
+                        val newVal = (manualCutPoints[cutIdx] + 1.0).coerceAtMost(videoDurationSec - 1.0)
+                        manualCutPoints[cutIdx] = newVal
+                        renderManualCutsUi()
+                    }
+                }
+
+                val spacer2 = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(16, 0)
+                }
+
+                val btnDelete = TextView(this).apply {
+                    text = " ✕ "
+                    setTextColor(Color.parseColor("#EF4444"))
+                    setBackgroundColor(Color.parseColor("#1E293B"))
+                    setPadding(16, 8, 16, 8)
+                    textSize = 12f
+                    setOnClickListener {
+                        manualCutPoints.removeAt(cutIdx)
+                        renderManualCutsUi()
+                    }
+                }
+
+                controlsRow.addView(tvCutLabel)
+                controlsRow.addView(btnMinus)
+                controlsRow.addView(spacer1)
+                controlsRow.addView(btnPlus)
+                controlsRow.addView(spacer2)
+                controlsRow.addView(btnDelete)
+                rowLayout.addView(controlsRow)
+            }
+
+            rowCard.addView(rowLayout)
+            containerManualCuts.addView(rowCard)
+        }
+    }
+
     private fun handlePhotoSelected(uri: Uri) {
         try {
             val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -242,6 +668,7 @@ class MainActivity : AppCompatActivity() {
             tvOptimizationBadge.text = "Modo: Foto HD (Máxima Nitidez JPEG 96%)"
             btnCompress.text = "Optimizar Foto para WhatsApp"
             btnCompress.isEnabled = true
+            cardSplitOptions.visibility = View.GONE
         } catch (e: Exception) {
             Toast.makeText(this, "Error al leer imagen: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -259,19 +686,32 @@ class MainActivity : AppCompatActivity() {
             val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT) ?: "1920"
             retriever.release()
 
-            val numParts = ceil(videoDurationSec / 60.0).toInt().coerceAtLeast(1)
-
-            tvVideoTitle.text = "Video cargado (${String.format("%.1f", videoDurationSec)} s)"
-            tvVideoDetails.text = "Resolución origen: ${width}x${height} | Partes estimadas: $numParts"
-
-            if (videoDurationSec <= 35) {
-                tvOptimizationBadge.text = "Modo: 1080p Máxima Nitidez (Tope ~14.5MB)"
-            } else {
-                tvOptimizationBadge.text = "Modo: 720p Optimizado 60s (Tope ~14.5MB)"
+            // Pre-configurar puntos de corte balanceados
+            manualCutPoints.clear()
+            if (videoDurationSec > selectedLimitSec) {
+                val numParts = ceil(videoDurationSec / selectedLimitSec).toInt().coerceAtLeast(1)
+                val partDur = videoDurationSec / numParts
+                for (i in 1 until numParts) {
+                    manualCutPoints.add(i * partDur)
+                }
             }
+
+            tvVideoTitle.text = "Video cargado (${String.format(Locale.US, "%.1f", videoDurationSec)} s)"
+            tvVideoDetails.text = "Resolución origen: ${width}x${height}"
 
             btnCompress.text = "Optimizar Video para WhatsApp"
             btnCompress.isEnabled = true
+
+            // Configurar reproductor preview
+            videoPreview.setVideoURI(uri)
+            videoPreview.setOnPreparedListener { mp ->
+                seekBarVideo.max = mp.duration
+                tvTotalVideoTime.text = formatSeconds(videoDurationSec)
+                tvCurrentVideoTime.text = "00:00"
+                btnMarkCutPoint.text = "✂️ Marcar corte en 00:00"
+            }
+
+            updateSplitUi()
         } catch (e: Exception) {
             Toast.makeText(this, "Error al leer metadatos de video: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -281,6 +721,7 @@ class MainActivity : AppCompatActivity() {
         btnCompress.isEnabled = false
         btnSelectPhoto.isEnabled = false
         btnSelectVideo.isEnabled = false
+        cardSplitOptions.visibility = View.GONE
         layoutProgress.visibility = View.VISIBLE
         layoutResults.visibility = View.GONE
         resultsContainer.removeAllViews()
@@ -393,9 +834,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startVideoCompression(uri: Uri) {
+        val segments = calculateSegments()
+        if (segments.isEmpty()) {
+            Toast.makeText(this, "No hay partes para procesar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         btnCompress.isEnabled = false
         btnSelectPhoto.isEnabled = false
         btnSelectVideo.isEnabled = false
+        cardSplitOptions.visibility = View.GONE
         layoutProgress.visibility = View.VISIBLE
         layoutResults.visibility = View.GONE
         resultsContainer.removeAllViews()
@@ -413,11 +861,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                val segmentLimit = 60.0
-                val numParts = ceil(videoDurationSec / segmentLimit).toInt().coerceAtLeast(1)
                 val generatedFiles = mutableListOf<File>()
 
-                // Variables para seguimiento del progreso real
                 var currentPartStartSec = 0.0
                 var currentPartDurationSec = 0.0
                 var currentPartIdx = 0
@@ -433,36 +878,32 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             progressBar.progress = percent
                             tvProgressPercent.text = "$percent%"
-                            tvProgressStatus.text = "Codificando parte ${currentPartIdx + 1} de $numParts ($percent%)..."
+                            tvProgressStatus.text = "Codificando parte ${currentPartIdx + 1} de ${segments.size} ($percent%)..."
                         }
                     }
                 }
 
-                for (i in 0 until numParts) {
-                    val start = i * segmentLimit
-                    val rem = min(segmentLimit, videoDurationSec - start)
-                    if (rem < 2.0 && i > 0) break
+                for ((idx, seg) in segments.withIndex()) {
+                    currentPartStartSec = seg.startSec
+                    currentPartDurationSec = seg.durationSec
+                    currentPartIdx = idx
 
-                    currentPartStartSec = start
-                    currentPartDurationSec = rem
-                    currentPartIdx = i
-
-                    val is1080 = rem <= 35.0
+                    val is1080 = seg.durationSec <= 35.0
                     val w = if (is1080) 1080 else 720
                     val h = if (is1080) 1920 else 1280
-                    val calculatedVb = ((14.5 * 8192 - 128 * rem) / rem).toInt()
+                    val calculatedVb = ((14.5 * 8192 - 128 * seg.durationSec) / seg.durationSec).toInt()
                     val vb = min(calculatedVb, if (is1080) 4800 else 3200).coerceAtLeast(1200)
                     val maxrate = (vb * 1.25).toInt()
                     val bufsize = vb * 2
 
-                    val outFile = File(cacheDir, "estado_parte_${i + 1}_${System.currentTimeMillis()}.mp4")
+                    val outFile = File(cacheDir, "estado_parte_${seg.partNumber}_${System.currentTimeMillis()}.mp4")
 
                     val vf = "scale=$w:$h:force_original_aspect_ratio=decrease,pad=$w:$h:(ow-iw)/2:(oh-ih)/2:black,fps=30"
 
                     val cmd = arrayOf(
                         "-y",
-                        "-ss", start.toString(),
-                        "-t", rem.toString(),
+                        "-ss", String.format(Locale.US, "%.2f", seg.startSec),
+                        "-t", String.format(Locale.US, "%.2f", seg.durationSec),
                         "-i", tempInput.absolutePath,
                         "-vf", vf,
                         "-c:v", "libx264",
@@ -496,6 +937,7 @@ class MainActivity : AppCompatActivity() {
                     tvProgressStatus.text = "¡Video codificado con éxito!"
 
                     layoutProgress.visibility = View.GONE
+                    cardSplitOptions.visibility = View.VISIBLE
                     btnCompress.isEnabled = true
                     btnSelectPhoto.isEnabled = true
                     btnSelectVideo.isEnabled = true
@@ -510,6 +952,7 @@ class MainActivity : AppCompatActivity() {
                 FFmpegKitConfig.enableStatisticsCallback(null)
                 runOnUiThread {
                     layoutProgress.visibility = View.GONE
+                    cardSplitOptions.visibility = View.VISIBLE
                     btnCompress.isEnabled = true
                     btnSelectPhoto.isEnabled = true
                     btnSelectVideo.isEnabled = true

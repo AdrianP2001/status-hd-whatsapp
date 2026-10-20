@@ -53,7 +53,7 @@
                         android:background="#1E293B"
                         android:paddingHorizontal="6dp"
                         android:paddingVertical="2dp"
-                        android:text="v1.4"
+                        android:text="v1.5"
                         android:textColor="@color/text_gray"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -149,12 +149,251 @@
                 app:cornerRadius="12dp" />
         </LinearLayout>
 
+        <!-- Opciones de División y Recorte de Video (v1.5) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardSplitOptions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/card_dark"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#334155"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="✂️ Modo de División de Estados"
+                    android:textColor="@color/text_white"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <!-- Selector de Límite WhatsApp (30s / 60s) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginTop="10dp">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Límite por estado:"
+                        android:textColor="@color/text_gray"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButtonToggleGroup
+                        android:id="@+id/toggleGroupLimit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        app:singleSelection="true"
+                        app:selectionRequired="true">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnLimit30s"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="38dp"
+                            android:paddingHorizontal="10dp"
+                            android:text="30s (Estándar)"
+                            android:textSize="11sp"
+                            android:textColor="@color/text_white" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnLimit60s"
+                            style="?attr/materialButtonOutlinedStyle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="38dp"
+                            android:paddingHorizontal="10dp"
+                            android:text="60s (Nuevo)"
+                            android:textSize="11sp"
+                            android:textColor="@color/text_white" />
+                    </com.google.android.material.button.MaterialButtonToggleGroup>
+                </LinearLayout>
+
+                <!-- Selector de Tipo de División: Balanceado vs Fijo vs Manual -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/toggleGroupSplitMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeBalanced"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:paddingHorizontal="4dp"
+                        android:text="⚖️ Balanceado"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeFixed"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:paddingHorizontal="4dp"
+                        android:text="⏱️ Fijo"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeManual"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:paddingHorizontal="4dp"
+                        android:text="✂️ Manual"
+                        android:textSize="11sp"
+                        android:textColor="@color/text_white" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
+                <!-- Resumen en Modo Automático (Balanceado o Fijo) -->
+                <TextView
+                    android:id="@+id/tvAutoSplitSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="#0F172A"
+                    android:padding="10dp"
+                    android:text="Se dividirá en partes equilibradas"
+                    android:textColor="@color/accent_blue"
+                    android:textSize="12sp" />
+
+                <!-- Sección de Edición Manual / Conversación (Mini reproductor + Cortes) -->
+                <LinearLayout
+                    android:id="@+id/layoutManualEditor"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reproduce y pausa en los silencios para cortar:"
+                        android:textColor="@color/text_gray"
+                        android:textSize="12sp" />
+
+                    <!-- Mini Reproductor con VideoView -->
+                    <com.google.android.material.card.MaterialCardView
+                        android:layout_width="match_parent"
+                        android:layout_height="180dp"
+                        android:layout_marginTop="8dp"
+                        app:cardBackgroundColor="#000000"
+                        app:cardCornerRadius="12dp">
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
+
+                            <VideoView
+                                android:id="@+id/videoPreview"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:layout_gravity="center" />
+
+                            <ImageView
+                                android:id="@+id/ivPlayPauseOverlay"
+                                android:layout_width="48dp"
+                                android:layout_height="48dp"
+                                android:layout_gravity="center"
+                                android:background="#66000000"
+                                android:src="@android:drawable/ic_media_play"
+                                android:padding="8dp" />
+                        </FrameLayout>
+                    </com.google.android.material.card.MaterialCardView>
+
+                    <!-- Control de Reproducción y Tiempo -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="8dp">
+
+                        <TextView
+                            android:id="@+id/tvCurrentVideoTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="00:00"
+                            android:textColor="@color/text_white"
+                            android:textSize="12sp" />
+
+                        <SeekBar
+                            android:id="@+id/seekBarVideo"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:progressTint="@color/whatsapp_green"
+                            android:thumbTint="@color/whatsapp_green" />
+
+                        <TextView
+                            android:id="@+id/tvTotalVideoTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="00:00"
+                            android:textColor="@color/text_gray"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <!-- Botón para marcar corte en la posición actual del video -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMarkCutPoint"
+                        android:layout_width="match_parent"
+                        android:layout_height="46dp"
+                        android:layout_marginTop="8dp"
+                        android:text="✂️ Marcar corte en este punto"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        app:backgroundTint="@color/whatsapp_green"
+                        app:cornerRadius="10dp" />
+
+                    <!-- Contenedor dinámico de partes cortadas -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="Partes resultantes del corte:"
+                        android:textColor="@color/text_white"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/containerManualCuts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:orientation="vertical" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- Boton Comprimir y Compartir -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCompress"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="14dp"
             android:enabled="false"
             android:text="Optimizar para WhatsApp"
             android:textColor="#000000"
